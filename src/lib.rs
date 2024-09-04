@@ -67,7 +67,7 @@ impl<K: Eq + Hash, V, S: BuildHasher> OrdHashMap<K, V, S> {
     }
 }
 
-impl<K: Eq + Hash + Clone, V> OrdHashMap<K, V> {
+impl<K: Eq + Hash + Clone, V, S: BuildHasher> OrdHashMap<K, V, S> {
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if let Some(v) = self.map.get_mut(&key) {
             Some(v.change(value))
