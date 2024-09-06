@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     hash::{BuildHasher, Hash, RandomState},
     mem,
@@ -8,6 +9,7 @@ use std::{
 pub struct OrdValue<K, V> {
     pub value: V,
     after_key: Option<K>,
+    before_key: Option<K>,
 }
 
 impl<K, V> OrdValue<K, V> {
@@ -15,11 +17,24 @@ impl<K, V> OrdValue<K, V> {
         Self {
             value,
             after_key: None,
+            before_key: None,
         }
     }
 
-    fn set_after(&mut self, key: K) {
-        self.after_key = Some(key);
+    fn with_before(value: V, before_key: Option<K>) -> Self {
+        Self {
+            value,
+            after_key: None,
+            before_key,
+        }
+    }
+
+    fn set_after(&mut self, key: Option<K>) {
+        self.after_key = key;
+    }
+
+    fn set_before(&mut self, key: Option<K>) {
+        self.before_key = key;
     }
 
     fn change(&mut self, mut value: V) -> V {
@@ -58,11 +73,19 @@ impl<K, V, S> OrdHashMap<K, V, S> {
 }
 
 impl<K: Eq + Hash, V, S: BuildHasher> OrdHashMap<K, V, S> {
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         Some(&self.map.get(key)?.value)
     }
 
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         Some(&mut self.map.get_mut(key)?.value)
     }
 }
@@ -72,13 +95,40 @@ impl<K: Eq + Hash + Clone, V, S: BuildHasher> OrdHashMap<K, V, S> {
         if let Some(v) = self.map.get_mut(&key) {
             Some(v.change(value))
         } else {
-            self.map.insert(key.clone(), OrdValue::new(value));
+            self.map.insert(
+                key.clone(),
+                OrdValue::with_before(value, self.before_key.clone()),
+            );
 
             if let Some(before_key) = &self.before_key {
-                self.map.get_mut(before_key).unwrap().set_after(key);
+                self.map.get_mut(before_key).unwrap().set_after(Some(key));
             }
 
             None
         }
+    }
+}
+
+impl<K: Eq + Hash + Clone, V: Clone, S: BuildHasher> OrdHashMap<K, V, S> {
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let OrdValue {
+            value,
+            after_key,
+            before_key,
+        } = self.map.get(key)?.clone();
+
+        if let Some(ref after_key) = after_key {
+            if let Some(after_value) = self.map.get_mut(after_key) {
+                after_value.set_before(before_key.clone());
+            }
+        }
+
+        if let Some(ref before_key) = before_key {
+            if let Some(before_value) = self.map.get_mut(before_key) {
+                before_value.set_after(after_key);
+            }
+        }
+
+        Some(value)
     }
 }
