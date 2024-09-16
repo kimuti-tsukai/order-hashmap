@@ -33,10 +33,8 @@ impl<K, V> OrdValue<K, V> {
         self.before_key = key;
     }
 
-    fn change(&mut self, mut value: V) -> V {
-        mem::swap(&mut self.value, &mut value);
-
-        value
+    fn change(&mut self, value: V) -> V {
+        mem::replace(&mut self.value, value)
     }
 }
 
